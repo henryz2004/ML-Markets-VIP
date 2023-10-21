@@ -2,7 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 from newspaper import Article
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
-
+from concurrent.futures import ThreadPoolExecutor
 
 class GoogleScraper:
     def __init__(self, query, start_date, end_date):
@@ -15,8 +15,7 @@ class GoogleScraper:
         query_params = parse_qs(parsed_url.query)
         start_param = query_params.get('start', ['0'])[0]
         start_value = int(start_param)
-        generated_urls = []
-        generated_urls.append(first_url)
+        generated_urls = [first_url]
         for _ in range(num_pages):
             start_value += results_per_page
             query_params['start'] = str(start_value)
@@ -24,7 +23,19 @@ class GoogleScraper:
             generated_urls.append(updated_url)
         return generated_urls
 
-    def link_scraper(self):
+    def link_scraper(self, url):
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
+        }
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, "html.parser")
+            search_results = soup.find_all("a")
+            news_links = [result.get("href") for result in search_results if result.get("href", "").startswith("http") and "google" not in result.get("href")]
+            return news_links
+        return []
+
+    def get_data(self):
         base_url = "https://www.google.com/search"
         params = {
             "q": self.query,
@@ -32,45 +43,36 @@ class GoogleScraper:
             "tbm": "nws"
         }
         url = f"{base_url}?{urlencode(params)}"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
-        }
         urls = self.url_generator(url)
-        news_links = []
-        for link in urls:
-            response = requests.get(link, headers=headers)
-            if response.status_code == 200:
-                soup = BeautifulSoup(response.text, "html.parser")
-                search_results = soup.find_all("a")
-                for result in search_results:
-                    link = result.get("href")
-                    if link and link.startswith("http") and "google" not in link:
-                        news_links.append(link)
-        return news_links
-
-    def get_data(self):
-        urls = self.link_scraper()
+        
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            news_links = sum(executor.map(self.link_scraper, urls), [])
+        
         metadata_list = []
-        for url in urls:
-            try:
-                article = Article(url)
-                article.download()
-                article.parse()
-                title = article.title
-                description = article.meta_description
-                publish_date = article.publish_date
-                article_url = article.source_url
-                metadata = {
-                    "title": title,
-                    "description": description,
-                    "publish_date": publish_date,
-                    "url": article_url
-                }
-                metadata_list.append(metadata)
-            except Exception as e:
-                continue
-        return metadata_list
-    
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            metadata_list = list(executor.map(self.extract_metadata, news_links))
+        
+        return [metadata for metadata in metadata_list if metadata]
+
+    def extract_metadata(self, url):
+        try:
+            article = Article(url)
+            article.download()
+            article.parse()
+            title = article.title
+            description = article.meta_description
+            publish_date = article.publish_date
+            article_url = article.source_url
+            metadata = {
+                "title": title,
+                "description": description,
+                "publish_date": publish_date,
+                "url": article_url
+            }
+            return metadata
+        except Exception as e:
+            return None
+
 query = "ford stock"
 start_date = "06/06/2020"
 end_date = "06/06/2022"
@@ -78,4 +80,3 @@ end_date = "06/06/2022"
 newspaper = GoogleScraper(query, start_date, end_date)
 data = newspaper.get_data()
 print(data)
-
