@@ -5,7 +5,8 @@ from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from concurrent.futures import ThreadPoolExecutor
 
 class GoogleScraper:
-    def __init__(self, query, start_date, end_date):
+    def __init__(self, site, query, start_date, end_date):
+        self.site = site
         self.query = query
         self.start_date = start_date
         self.end_date = end_date
@@ -37,12 +38,14 @@ class GoogleScraper:
 
     def get_data(self):
         base_url = "https://www.google.com/search"
+        query = f" {self.query} site:{self.site}"
         params = {
-            "q": self.query,
+            "q": query,
             "tbs": f"cdr:1,cd_min:{self.start_date},cd_max:{self.end_date}",
             "tbm": "nws"
         }
         url = f"{base_url}?{urlencode(params)}"
+        print(url)
         urls = self.url_generator(url)
         
         with ThreadPoolExecutor(max_workers=10) as executor:
@@ -73,11 +76,11 @@ class GoogleScraper:
         except Exception as e:
             return None
 
-query = "world cup cricket"
+site = "bbc.com"  # Replace with your target news site
+query = "ford stock"
 start_date = "06/06/2020"
 end_date = "06/06/2022"
 
-newspaper = GoogleScraper(query, start_date, end_date)
+newspaper = GoogleScraper(site, query, start_date, end_date)
 data = newspaper.get_data()
-for item in data:
-    print(item)
+# print(data)
