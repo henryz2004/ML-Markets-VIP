@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 from newspaper import Article
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from concurrent.futures import ThreadPoolExecutor
+import csv
 
 class GoogleScraper:
     def __init__(self, query, start_date, end_date):
@@ -10,7 +11,7 @@ class GoogleScraper:
         self.start_date = start_date
         self.end_date = end_date
 
-    def url_generator(self, first_url, num_pages=10, results_per_page=10):
+    def url_generator(self, first_url, num_pages=15, results_per_page=10):
         parsed_url = urlparse(first_url)
         query_params = parse_qs(parsed_url.query)
         start_param = query_params.get('start', ['0'])[0]
@@ -69,14 +70,29 @@ class GoogleScraper:
                 "publish_date": publish_date,
                 "url": article_url
             }
+            metadata = (title, description, publish_date, article_url)
             return metadata
         except Exception as e:
             return None
+        
+    def save_to_csv(self, data):
+        with open('news_data.csv', mode='w', newline='', encoding='utf-8') as file:
+            fieldnames = ['title', 'description', 'publish_date', 'url']
+            writer = csv.DictWriter(file, fieldnames=fieldnames)
+            writer.writeheader()
+            for metadata in data:
+                if metadata:
+                    writer.writerow(metadata)
 
+    
 query = "ford stock"
 start_date = "06/06/2020"
 end_date = "06/06/2022"
 
+
+
 newspaper = GoogleScraper(query, start_date, end_date)
 data = newspaper.get_data()
 print(data)
+print(len(data))
+newspaper.save_to_csv(data)
