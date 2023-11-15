@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 from newspaper import Article
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from concurrent.futures import ThreadPoolExecutor
+import csv
 
 class GoogleScraper:
     def __init__(self, query, start_date, end_date):
@@ -72,6 +73,16 @@ class GoogleScraper:
             return metadata
         except Exception as e:
             return None
+        
+            
+    def save_to_csv(self, data):
+        with open('news_data.csv', mode='w', newline='', encoding='utf-8') as file:
+            fieldnames = ['title', 'description', 'publish_date', 'url']
+            writer = csv.DictWriter(file, fieldnames=fieldnames)
+            writer.writeheader()
+            for metadata in data:
+                if metadata:
+                    writer.writerow(metadata)
 
 query = "world cup cricket"
 start_date = "06/06/2020"
@@ -81,3 +92,4 @@ newspaper = GoogleScraper(query, start_date, end_date)
 data = newspaper.get_data()
 for item in data:
     print(item)
+newspaper.save_to_csv()
