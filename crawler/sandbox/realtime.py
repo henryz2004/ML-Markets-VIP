@@ -70,8 +70,7 @@ class RealTimeScraper:
             return metadata
         except Exception as e:
             return None
-        
-            
+              
     def save_to_csv(self, data):
         with open('news_data.csv', mode='w', newline='', encoding='utf-8') as file:
             fieldnames = ['title', 'description', 'publish_date', 'url']
