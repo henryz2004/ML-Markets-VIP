@@ -45,7 +45,6 @@ class GoogleScraper:
             "tbm": "nws"
         }
         url = f"{base_url}?{urlencode(params)}"
-        print(url)
         urls = self.url_generator(url)
         
         with ThreadPoolExecutor(max_workers=10) as executor:
@@ -83,4 +82,4 @@ end_date = "06/06/2022"
 
 newspaper = GoogleScraper(site, query, start_date, end_date)
 data = newspaper.get_data()
-# print(data)
+print(data)

@@ -84,9 +84,9 @@ class GoogleScraper:
                 if metadata:
                     writer.writerow(metadata)
 
-query = "world cup cricket"
+query = "news  site:nytimes.com"
 start_date = "06/06/2020"
-end_date = "06/06/2022"
+end_date = "06/06/2023"
 
 newspaper = GoogleScraper(query, start_date, end_date)
 data = newspaper.get_data()

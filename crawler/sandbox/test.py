@@ -1,82 +1,203 @@
+# coding: utf-8
+
+import pandas as pd
+from bs4 import BeautifulSoup as bs
 import requests
-from bs4 import BeautifulSoup
-from newspaper import Article
-from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
-from concurrent.futures import ThreadPoolExecutor
+import datetime as dt
+import sqlite3
+import os
+import re
+import copy
+import time
+os.chdir('/path/to/your/directory')  # Specify the path to your directory
 
-class GoogleScraper:
-    def __init__(self, query, start_date, end_date):
-        self.query = query
-        self.start_date = start_date
-        self.end_date = end_date
+import text_mining
 
-    def url_generator(self, first_url, num_pages=10, results_per_page=10):
-        parsed_url = urlparse(first_url)
-        query_params = parse_qs(parsed_url.query)
-        start_param = query_params.get('start', ['0'])[0]
-        start_value = int(start_param)
-        generated_urls = [first_url]
-        for _ in range(num_pages):
-            start_value += results_per_page
-            query_params['start'] = str(start_value)
-            updated_url = urlunparse(parsed_url._replace(query=urlencode(query_params, doseq=True)))
-            generated_urls.append(updated_url)
-        return generated_urls
+def main():
+    ec = scrape('https://www.economist.com/middle-east-and-africa/', economist)
+    aj = scrape('https://www.aljazeera.com/topics/regions/middleeast.html', aljazeera)
+    tr = scrape('https://www.reuters.com/news/archive/middle-east', reuters)
+    bc = scrape('https://www.bbc.co.uk/news/world/middle_east', bbc)
+    ws = scrape('https://www.wsj.com/news/types/middle-east-news', wsj)
+    ft = scrape('https://www.ft.com/world/mideast', financialtimes)
+    bb = scrape('https://www.bloomberg.com/view/topics/middle-east', bloomberg)
+    cn = scrape('https://edition.cnn.com/middle-east', cnn)
+    fo = scrape('https://fortune.com/tag/middle-east/', fortune)
 
-    def link_scraper(self, url):
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36"
-        }
-        response = requests.get(url, headers=headers)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.text, "html.parser")
-            search_results = soup.find_all("a")
-            news_links = [result.get("href") for result in search_results if result.get("href", "").startswith("http") and "google" not in result.get("href")]
-            return news_links
-        return []
+    df = ft
+    for i in [aj, tr, bc, ws, cn, fo, ec, bb]:
+        df = df.append(i)
 
-    def get_data(self):
-        base_url = "https://www.google.com/search"
-        params = {
-            "q": self.query,
-            "tbs": f"cdr:1,cd_min:{self.start_date},cd_max:{self.end_date}",
-            "tbm": "nws"
-        }
-        url = f"{base_url}?{urlencode(params)}"
-        urls = self.url_generator(url)
+    df.reset_index(inplace=True, drop=True)
+
+    df = database(df)
+
+    output = text_mining.remove_similar(df, text_mining.stopword)
+
+    for i in range(len(output)):
+        if 'https://' not in output['link'][i]:
+            temp = re.search('www', output['link'][i]).start()
+            output.at[i, 'link'] = 'http://' + output['link'][i][temp:]
+
+    print(output)
+
+    html = """
+    <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" 
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+    <html>
+
+    <head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1" name="viewport">
+    <meta name="x-apple-disable-message-reformatting">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta content="telephone=no" name="format-detection">
+    <title></title>
+    <!--[if (mso 16)]>
+    <style type="text/css">
+    a {text-decoration: none;}
+    </style>
+    <![endif]-->
+    <!--[if gte mso 9]><style>sup 
+    { font-size: 100% !important; }</style><![endif]-->
+    </head>
+
+    <body>
+    <div class="es-wrapper-color">
+        <!--[if gte mso 9]>
+                <v:background xmlns:v="urn:schemas-microsoft-com:vml" 
+                fill="t">
+                    <v:fill type="tile" color="#333333"></v:fill>
+                </v:background>
+            <![endif]-->
+        <table class="es-content-body" width="600" 
+        cellspacing="15" cellpadding="15" bgcolor="#ffffff" 
+        align="center">
+         <tr>
+            <td class="esd-block-text" align="center">
+            <h2>Middle East</h2></td>
+         </tr></table>
+         <div><br></div>
         
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            news_links = sum(executor.map(self.link_scraper, urls), [])
-        
-        metadata_list = []
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            metadata_list = list(executor.map(self.extract_metadata, news_links))
-        
-        return [metadata for metadata in metadata_list if metadata]
+    """
 
-    def extract_metadata(self, url):
+    for i in range(len(output)):
+        html += """<table class="es-content-body" width="600" 
+        cellspacing="10" cellpadding="5" bgcolor="#ffffff"
+        align="center">"""
+        html += """<tr><td class="esd-block-text es-p10t es-p10b"
+        align="center"><p><a href="%s">
+        <font color="#6F6F6F">%s<font><a></p></td></tr>
+        <tr><td align="center">
+        <img src="%s" width="200" height="150"/></td></tr>
+        <tr>""" % (output['link'][i], output['title'][i], output['image'][i])
+        html += """</tr></table><div><br></div>"""
+
+    html += """
+    </div>
+    </body>
+    </html>
+    """
+
+    send(html)
+
+
+def send(html):
+    outlook = win32.Dispatch('outlook.application')
+    mail = outlook.CreateItem(0)
+
+    receivers = ['email1@example.com', 'email2@example.com', 'email3@example.com']
+    mail.To = ';'.join(receivers)
+    
+    mail.Subject = 'Mid East Newsletter %s' % (dt.datetime.now())
+    mail.BodyFormat = 2
+    mail.HTMLBody = html
+
+    condition = str(input('0/1 for no/yes:'))
+    if condition == '1':
+        mail.Send()
+        print('\nSENT')
+    else:
+        print('\nABORT')
+
+
+def database(df):
+    temp = []
+    conn = sqlite3.connect('mideast_news.db')
+    c = conn.cursor()
+
+    for i in range(len(df)):
         try:
-            article = Article(url)
-            article.download()
-            article.parse()
-            title = article.title
-            description = article.meta_description
-            publish_date = article.publish_date
-            article_url = article.source_url
-            metadata = {
-                "title": title,
-                "description": description,
-                "publish_date": publish_date,
-                "url": article_url
-            }
-            return metadata
+            c.execute("""INSERT INTO news VALUES (?,?,?)""", df.iloc[i, :])
+            conn.commit()
+
+            print('Updating...')
+
+            temp.append(i)
+
         except Exception as e:
-            return None
+            print(e)
 
-query = "ford stock"
-start_date = "06/06/2020"
-end_date = "06/06/2022"
+    conn.close()
 
-newspaper = GoogleScraper(query, start_date, end_date)
-data = newspaper.get_data()
-print(data)
+    if temp:
+        output = df.loc[[i for i in temp]]
+        output.reset_index(inplace=True, drop=True)
+    else:
+        output = pd.DataFrame()
+        output['title'] = ['No updates yet.']
+        output['link'] = output['image'] = ['']
+
+    return output
+
+
+def scrape(url, method):
+    print('scraping webpage effortlessly')
+    time.sleep(5)
+
+    session = requests.Session()
+    response = session.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+    page = bs(response.content, 'html.parser', from_encoding='utf_8_sig')
+
+    df = method(page)
+    out = database(df)
+
+    return out
+
+
+def economist(page):
+    title, link, image = [], [], []
+    df = pd.DataFrame()
+    prefix = 'https://www.economist.com'
+
+    a = page.find_all('div', class_="topic-item-container")
+
+    for i in a:
+        link.append(prefix + i.find('a').get('href'))
+        title.append(i.find('a').text)
+        image.append(i.parent.find('img').get('src'))
+
+    df['title'] = title
+    df['link'] = link
+    df['image'] = image
+
+    return df
+
+
+def fortune(page):
+    title, link, image = [], [], []
+    df = pd.DataFrame()
+    prefix = 'https://fortune.com'
+
+    a = page.find_all('article')
+
+    for i in a:
+        link.append(prefix + i.find('a').get('href'))
+
+        if 'http' in i.find('img').get('src'):
+            image.append(i.find('img').get('src'))
+        else:
+            image.append('')
+
+        temp = re.split('\s*', i.find_all('a')[1].text)
+        temp.pop()
